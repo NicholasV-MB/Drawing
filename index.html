@@ -1,0 +1,311 @@
+<!doctype html> 
+<html> 
+<head>
+	<meta charset="UTF-8">
+	<title>Disegno</title>
+	<style>
+		.center { margin-left: 17%; }
+	</style>
+	<!--<script src="lib/JSARToolKit.min.js"></script> -->
+	<script src="lib/three.min.js"></script>
+	<script src="lib/stats.min.js"></script>
+	<script src="lib/dat.gui.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineSegments2.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/Line2.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineMaterial.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineSegmentsGeometry.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineGeometry.js"></script>
+	<script type="text/javascript">
+	var bgScene, bgCamera, renderer, stats, bgTexture, hcanvas, ocanvas, dcanvas, hvideo, lines;
+	var gui, pen_folder, draw_controller, rubber_controller, rubber_folder;
+	var settings = {
+		"Draw": false,
+		"Erase": false,
+		"Color": 0x0000ff,
+		"Size": 1
+	};
+	var cube;
+	// funzione che attiva la videocamera al caricamento della finestra
+	window.onload = function(){
+		// connect to webcam
+		var video = document.getElementById("hiddenVideo");	
+		var constraints = {audio: false, video: true};
+		navigator.mediaDevices.getUserMedia(constraints)
+		.then(function(stream){
+			video.srcObject = stream;
+		})
+		.catch(function(err){
+			alert(err.name + ": " + err.message);	
+			video.src = "marker.webm";
+		});
+		
+		// once we have the video stream, we can start processing it
+		video.onloadedmetadata = start_processing;
+	}
+
+	function start_processing(event){
+
+		stats = new Stats();
+		stats.domElement.style.position = 'absolute';
+		stats.domElement.style.top = '0px';
+		document.body.appendChild( stats.domElement );
+			
+		// Set up video and canvas
+		hvideo = document.getElementById("hiddenVideo");
+		hcanvas = document.getElementById("hiddenCanvas");
+		dcanvas = document.getElementById("drawingCanvas");
+		ocanvas = document.getElementById("outCanvas");
+		hcanvas.width = ocanvas.width = dcanvas.width = hvideo.clientWidth;
+		hcanvas.height = ocanvas.height = dcanvas.height = hvideo.clientHeight;
+		hvideo.style.display = "none";
+		hcanvas.style.display = "none";
+		dcanvas.style.display = "none";
+		
+		/*
+		// setup JSARToolKit
+		var ART_raster = new NyARRgbRaster_Canvas2D(hcanvas);
+		var ART_param = new FLARParam(hcanvas.width, hcanvas.height);
+		*/
+		
+		// setup three.js
+		renderer = new THREE.WebGLRenderer( {canvas: dcanvas} );
+		renderer.autoClear = false;
+		
+		// create the background plane and its own camera
+		bgTexture = new THREE.Texture(hcanvas);
+		bgTexture.minFilter = THREE.LinearFilter;
+		var bgPlane = new THREE.Mesh(
+			new THREE.PlaneGeometry(2,2),
+			new THREE.MeshBasicMaterial({
+				map: bgTexture,
+				depthTest: false,  // disable Z-Buffering
+				depthWrite: false
+			})
+		);
+		bgCamera = new THREE.OrthographicCamera(-1,1,1,-1);
+		bgCamera.position.z = 1;
+		bgScene = new THREE.Scene();
+		bgScene.add(bgPlane);
+		bgScene.add(bgCamera);
+		
+		
+		var geometry = new THREE.BoxGeometry( 0.05, 0.05, 0.05 );
+		start_cube = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial({color:0x00ff00}) );
+		start_cube.name = "start_poi";
+		//bgScene.add(start_cube);
+		
+		buildGui();
+		
+		Update();
+
+	}
+	
+	// convert the camera projection matrix from JSARToolKit to Three.js format
+	function ConvertCameraMatrix(m) {
+		myMat = new THREE.Matrix4();
+		myMat.set(
+			m[0], m[4], m[8], m[12],
+			-m[1], -m[5], -m[9], -m[13],
+			m[2], m[6], m[10], m[14],
+			m[3], m[7], m[11], m[15]	
+		);
+		return myMat;
+	}
+	
+	// convert the marker matrix from JSARToolKit to Three.js format
+	function ConvertMarkerMatrix(m){
+		myMat = new THREE.Matrix4();
+		myMat.set(
+			m.m00, m.m02, -m.m01, m.m03,
+			m.m10, m.m12, -m.m11, m.m13, 
+			m.m20, m.m22, -m.m21, m.m23,
+			0, 0, 0, 1	
+		);
+		return myMat;
+	}
+
+	// Funzioni per l'aggiornamento e il render della pagina
+	function Update() {
+		stats.update();
+		hcanvas.getContext("2d").drawImage(hvideo, 0, 0, hcanvas.width, hcanvas.height);
+		hcanvas.changed = true;
+		bgTexture.needsUpdate = true;
+			
+		// draw background
+		renderer.clear();
+		
+		renderer.render(bgScene, bgCamera);
+			
+		// dcanvas now ready. Copy it to ocanvas to show it
+		ocanvas.getContext("2d").drawImage( dcanvas, 0, 0, dcanvas.width, dcanvas.height );
+
+		requestAnimationFrame( Update );
+	}
+
+	function buildGui(){
+		clearGui();
+		draw_controller = gui.add(settings, "Draw").onChange( function(newVal) {
+			if(newVal==true){
+				
+				pen_folder.__ul.setAttribute( "style", "display: " );
+				
+				rubber_controller.setValue(false);
+				
+				document.addEventListener("pointerdown", handlerPointerDown);
+				document.addEventListener("pointerup", handlerPointerUp);
+				document.addEventListener("pointermove", handlerPointerMove);
+				draw_mode = true;
+			} else {
+				document.removeEventListener("pointerdown", handlerPointerDown);
+				document.removeEventListener("pointerup", handlerPointerUp);
+				document.removeEventListener("pointermove", handlerPointerMove);
+				
+				pen_folder.__ul.setAttribute( "style", "display: none" );
+				draw_mode = false;
+			}
+		});
+		pen_folder = gui.addFolder("Pen");
+		pen_folder.__ul.setAttribute( "style", "display: none" );
+		pen_folder.addColor(settings, "Color");
+		pen_folder.add(settings, "Size").min(0.5).max(5).step(0.5).listen();
+		
+		rubber_controller = gui.add(settings, "Erase").onChange( function(newVal) {
+			if(newVal==true){
+				
+				rubber_folder.__ul.setAttribute( "style", "display: " );
+				draw_controller.setValue(false);
+				
+				document.addEventListener("pointerdown", handlerPointerDown);
+				document.addEventListener("pointerup", handlerPointerUp);
+				document.addEventListener("pointermove", handlerPointerMove);
+
+				lines = [];
+				bgScene.traverse(child =>{
+					if(child.type=="Line2"){
+						lines.push(child);
+					}
+				});
+				
+			} else {
+				document.removeEventListener("pointerdown", handlerPointerDown);
+				document.removeEventListener("pointerup", handlerPointerUp);
+				document.removeEventListener("pointermove", handlerPointerMove);
+				
+				rubber_folder.__ul.setAttribute( "style", "display: none" );
+			}
+		});
+		
+		rubber_folder = gui.addFolder("Rubber");
+		rubber_folder.__ul.setAttribute( "style", "display: none" );
+		rubber_folder.add(settings, "Size").min(0.5).max(5).step(0.5).listen();
+		
+		// pulsante cancella tutto
+		var erase_all = { erase:function(){ 
+			lines.forEach(child =>{
+				bgScene.remove(child);
+			});
+		}};
+		rubber_folder.add(erase_all,'erase').name("Erese all");
+	}
+   
+    // elimina gui se presente
+	function clearGui() {
+
+  		if ( gui ) gui.destroy();
+			gui = new dat.GUI( { autoPlace: true } );
+			gui.domElement.id = 'gui';
+  		gui.open();
+  	}
+
+
+
+	// gestione Disegno
+	// variabili
+	var draw_mode = false;
+	var drawing = false;
+	var erasing = false;
+	var start_pos = undefined;
+	var end_pos = undefined;
+		
+	// eventi
+	
+	// pressione click mouse
+	var handlerPointerDown = function(event){
+		start_pos = getCursorPosition(ocanvas, event);
+		if (start_pos !== undefined){
+			if(draw_mode==true){
+				drawing = true;
+			} else {
+				 erasing = true;
+			}
+		}
+	};
+	function getCursorPosition(canvas, event) {
+		var rect = canvas.getBoundingClientRect();
+		var x = event.clientX - rect.left;
+		var y = event.clientY - rect.top;
+		return getTHREEpos(x, y);
+	}
+	function getTHREEpos(x, y){
+		if(x<0 || x>ocanvas.width || y<0 || y>ocanvas.height){
+			return undefined;
+		}
+		var pos = new THREE.Vector3();
+		pos.x = 2*x/ocanvas.width-1;
+		pos.y = -2*y/ocanvas.height+1;
+		pos.z = 0;
+		return pos;
+	}
+	
+	
+	// rilascio click mouse
+	var handlerPointerUp = function(event) {
+		drawing = false;
+		erasing = false;
+		start_pos = undefined;
+		end_pos = undefined;
+	};
+	
+	function Draw(){
+		if(drawing==true && start_pos!==undefined && end_pos!==undefined){
+			
+			var material = new THREE.LineMaterial( { color: settings["Color"], linewidth: settings["Size"]/100 } );
+			var points = [];
+			points.push( start_pos );
+			points.push( end_pos );
+			var geometry = new THREE.LineGeometry().setPositions( [start_pos.x, start_pos.y, start_pos.z, end_pos.x, end_pos.y, end_pos.z] );
+			var line = new THREE.Line2( geometry, material );
+			bgScene.add(line);
+			start_pos = end_pos;
+		}
+	}
+	// movimento del puntatore
+	var handlerPointerMove = function(event){
+		end_pos = getCursorPosition(ocanvas, event);
+		if (drawing==true){
+			
+			Draw();
+		} else if( erasing==true){
+			Erase();
+		}
+	}
+	
+	function Erase(){
+		lines.forEach(child => {
+			if (end_pos.distanceTo(child.geometry.boundingSphere.center) <= (child.geometry.boundingSphere.radius+settings["Size"]/50)){
+				bgScene.remove(child);
+			}
+		});
+	}
+
+
+	
+	</script>
+</head> 
+<body>
+	<video autoplay controls id="hiddenVideo" width="64%" class='center'></video> 
+	<canvas id="hiddenCanvas" class='center'></canvas>
+	<canvas id="drawingCanvas" sclass='center'></canvas>
+	<canvas id="outCanvas" class='center'></canvas>
+</body>
+</html>
