@@ -6,16 +6,19 @@
 	<style>
 		.center { margin-left: 17%; }
 	</style>
-	<!--<script src="lib/JSARToolKit.min.js"></script> -->
+	<!-- JSARToolKit non serve! <script src="lib/JSARToolKit.min.js"></script> -->
 	<script src="lib/three.min.js"></script>
 	<script src="lib/stats.min.js"></script>
 	<script src="lib/dat.gui.min.js"></script>
+	<!-- script per poter usare Line2 e modificare la grandezza-->
 	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineSegments2.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/Line2.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineMaterial.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineSegmentsGeometry.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/lines/LineGeometry.js"></script>
 	<script type="text/javascript">
+	
+	// variabili globali
 	var bgScene, bgCamera, renderer, stats, bgTexture, hcanvas, ocanvas, dcanvas, hvideo, lines;
 	var gui, pen_folder, draw_controller, rubber_controller, rubber_folder;
 	var settings = {
@@ -24,7 +27,7 @@
 		"Color": 0x0000ff,
 		"Size": 1
 	};
-	var cube;
+
 	// funzione che attiva la videocamera al caricamento della finestra
 	window.onload = function(){
 		// connect to webcam
@@ -36,13 +39,14 @@
 		})
 		.catch(function(err){
 			alert(err.name + ": " + err.message);	
-			video.src = "marker.webm";
+			//video.src = "marker.webm";
 		});
 		
 		// once we have the video stream, we can start processing it
 		video.onloadedmetadata = start_processing;
 	}
 
+	//funzione avviata al caricamento del video dalla webcam
 	function start_processing(event){
 
 		stats = new Stats();
@@ -61,7 +65,7 @@
 		hcanvas.style.display = "none";
 		dcanvas.style.display = "none";
 		
-		/*
+		/* JSARToolKit non serve!
 		// setup JSARToolKit
 		var ART_raster = new NyARRgbRaster_Canvas2D(hcanvas);
 		var ART_param = new FLARParam(hcanvas.width, hcanvas.height);
@@ -82,6 +86,7 @@
 				depthWrite: false
 			})
 		);
+		//verrà utilizzata solo la bgScene e la bgCamera per disegnare
 		bgCamera = new THREE.OrthographicCamera(-1,1,1,-1);
 		bgCamera.position.z = 1;
 		bgScene = new THREE.Scene();
@@ -89,17 +94,13 @@
 		bgScene.add(bgCamera);
 		
 		
-		var geometry = new THREE.BoxGeometry( 0.05, 0.05, 0.05 );
-		start_cube = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial({color:0x00ff00}) );
-		start_cube.name = "start_poi";
-		//bgScene.add(start_cube);
-		
 		buildGui();
 		
 		Update();
 
 	}
 	
+	/* anche quetse non servono
 	// convert the camera projection matrix from JSARToolKit to Three.js format
 	function ConvertCameraMatrix(m) {
 		myMat = new THREE.Matrix4();
@@ -123,6 +124,7 @@
 		);
 		return myMat;
 	}
+	*/
 
 	// Funzioni per l'aggiornamento e il render della pagina
 	function Update() {
@@ -142,6 +144,7 @@
 		requestAnimationFrame( Update );
 	}
 
+	// costruzione della gui
 	function buildGui(){
 		clearGui();
 		draw_controller = gui.add(settings, "Draw").onChange( function(newVal) {
