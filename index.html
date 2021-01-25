@@ -19,14 +19,16 @@
 	<script type="text/javascript">
 	
 	// variabili globali
-	var bgScene, bgCamera, renderer, stats, bgTexture, hcanvas, ocanvas, dcanvas, hvideo, lines;
-	var gui, pen_folder, draw_controller, rubber_controller, rubber_folder;
+	var bgScene, bgCamera, renderer, stats, bgTexture, hcanvas, ocanvas, dcanvas, hvideo, lines, mode_draw;
+	var gui, pen_folder, draw_controller, rubber_controller, rubber_folder, line_folder, rect_folder, circle_folder;
 	var settings = {
 		"Draw": false,
 		"Erase": false,
 		"Color": 0x0000ff,
-		"Size": 1
+		"Size": 1,
+		"Mode": "Pen"
 	};
+	var mode_list = ["Pen", "Line", "Rectangle", "Circle"];
 
 	// funzione che attiva la videocamera al caricamento della finestra
 	window.onload = function(){
@@ -150,8 +152,9 @@
 		draw_controller = gui.add(settings, "Draw").onChange( function(newVal) {
 			if(newVal==true){
 				
+				mode_draw.__li.setAttribute( "style", "display: " );
 				pen_folder.__ul.setAttribute( "style", "display: " );
-				
+				mode_draw.setValue("Pen");
 				rubber_controller.setValue(false);
 				
 				document.addEventListener("pointerdown", handlerPointerDown);
@@ -164,18 +167,63 @@
 				document.removeEventListener("pointermove", handlerPointerMove);
 				
 				pen_folder.__ul.setAttribute( "style", "display: none" );
+				mode_draw.__li.setAttribute( "style", "display: none" );
 				draw_mode = false;
 			}
 		});
+		mode_draw = gui.add(settings, "Mode", mode_list).onChange(function(newVal){
+			if(newVal=="Pen"){
+				pen_folder.__ul.setAttribute( "style", "display: " );
+				line_folder.__ul.setAttribute( "style", "display: none" );
+				rect_folder.__ul.setAttribute( "style", "display: none" );
+				circle_folder.__ul.setAttribute( "style", "display: none" );
+			} else if(newVal=="Line"){
+				pen_folder.__ul.setAttribute( "style", "display: none" );
+				line_folder.__ul.setAttribute( "style", "display: " );
+				rect_folder.__ul.setAttribute( "style", "display: none" );
+				circle_folder.__ul.setAttribute( "style", "display: none" );
+			} else if(newVal=="Rectangle"){
+				pen_folder.__ul.setAttribute( "style", "display: none" );
+				line_folder.__ul.setAttribute( "style", "display: none" );
+				rect_folder.__ul.setAttribute( "style", "display: " );
+				circle_folder.__ul.setAttribute( "style", "display: none" );
+			} else {
+				pen_folder.__ul.setAttribute( "style", "display: none" );
+				line_folder.__ul.setAttribute( "style", "display: none" );
+				rect_folder.__ul.setAttribute( "style", "display: none" );
+				circle_folder.__ul.setAttribute( "style", "display: " );
+			}
+		});
+		mode_draw.__li.setAttribute( "style", "display: none" );
+		
 		pen_folder = gui.addFolder("Pen");
 		pen_folder.__ul.setAttribute( "style", "display: none" );
-		pen_folder.addColor(settings, "Color");
+		pen_folder.addColor(settings, "Color").listen();
 		pen_folder.add(settings, "Size").min(0.5).max(5).step(0.5).listen();
+		
+		line_folder = gui.addFolder("Line");
+		line_folder.__ul.setAttribute( "style", "display: none" );
+		line_folder.addColor(settings, "Color").listen();
+		line_folder.add(settings, "Size").min(0.5).max(5).step(0.5).listen();
+		
+		rect_folder = gui.addFolder("Rectangle");
+		rect_folder.__ul.setAttribute( "style", "display: none" );
+		rect_folder.addColor(settings, "Color").listen();
+		rect_folder.add(settings, "Size").min(0.5).max(5).step(0.5).listen();
+		
+		circle_folder = gui.addFolder("Circle");
+		circle_folder.__ul.setAttribute( "style", "display: none" );
+		circle_folder.addColor(settings, "Color").listen();
+		circle_folder.add(settings, "Size").min(0.5).max(5).step(0.5).listen();
 		
 		rubber_controller = gui.add(settings, "Erase").onChange( function(newVal) {
 			if(newVal==true){
 				
 				rubber_folder.__ul.setAttribute( "style", "display: " );
+				pen_folder.__ul.setAttribute( "style", "display: none" );
+				line_folder.__ul.setAttribute( "style", "display: none" );
+				rect_folder.__ul.setAttribute( "style", "display: none" );
+				circle_folder.__ul.setAttribute( "style", "display: none" );
 				draw_controller.setValue(false);
 				
 				document.addEventListener("pointerdown", handlerPointerDown);
@@ -263,6 +311,24 @@
 	
 	// rilascio click mouse
 	var handlerPointerUp = function(event) {
+		if (drawing==true){
+			if(settings["Mode"]=="Line"){
+				Draw();
+			} else if(settings["Mode"]=="Rectangle"){
+				var old_end = end_pos;
+				var old_start = start_pos;
+				end_pos = new THREE.Vector3(old_start.x, old_end.y, old_end.z);
+				Draw();
+				end_pos = new THREE.Vector3(old_end.x, old_end.y, old_end.z);
+				Draw();
+				end_pos = new THREE.Vector3(old_end.x, old_start.y, old_end.z);
+				Draw();
+				end_pos = new THREE.Vector3(old_start.x, old_start.y, old_end.z);
+				Draw();
+			} else if(settings["Mode"]=="Circle"){
+				DrawCircle();
+			}
+		}
 		drawing = false;
 		erasing = false;
 		start_pos = undefined;
@@ -282,12 +348,34 @@
 			start_pos = end_pos;
 		}
 	}
+	
+	function DrawCircle(){
+		var center = start_pos;
+		var radius = start_pos.distanceTo(end_pos);
+		start_pos = new THREE.Vector3(
+				center.x+Math.cos(0) * radius,
+				center.y+Math.sin(0) * radius,
+				center.z);
+		var segments = 64;
+		for (var i = 1; i<=segments; i++){
+			var theta = (i / segments) * Math.PI * 2;
+			
+			end_pos = new THREE.Vector3(
+				center.x+Math.cos(theta) * radius,
+				center.y+Math.sin(theta) * radius,
+				center.z);  
+			Draw();
+			
+			
+		}
+	}
 	// movimento del puntatore
 	var handlerPointerMove = function(event){
 		end_pos = getCursorPosition(ocanvas, event);
 		if (drawing==true){
-			
-			Draw();
+			if(settings["Mode"]=="Pen"){
+				Draw();
+			}
 		} else if( erasing==true){
 			Erase();
 		}
@@ -295,8 +383,10 @@
 	
 	function Erase(){
 		lines.forEach(child => {
-			if (end_pos.distanceTo(child.geometry.boundingSphere.center) <= (child.geometry.boundingSphere.radius+settings["Size"]/50)){
-				bgScene.remove(child);
+			if (end_pos !== undefined){
+				if (end_pos.distanceTo(child.geometry.boundingSphere.center) <= (child.geometry.boundingSphere.radius+settings["Size"]/50)){
+					bgScene.remove(child);
+				}
 			}
 		});
 	}
