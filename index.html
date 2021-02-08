@@ -8,6 +8,7 @@
 	</style>
 	<!-- JSARToolKit non serve! <script src="lib/JSARToolKit.min.js"></script> -->
 	<script src="lib/three.min.js"></script>
+	<script src="lib/BufferGeometryUtils.js"></script>
 	<script src="lib/stats.min.js"></script>
 	<script src="lib/dat.gui.min.js"></script>
 	<!-- script per poter usare Line2 e modificare la grandezza-->
@@ -130,6 +131,7 @@
 
 	// Funzioni per l'aggiornamento e il render della pagina
 	function Update() {
+		
 		stats.update();
 		hcanvas.getContext("2d").drawImage(hvideo, 0, 0, hcanvas.width, hcanvas.height);
 		hcanvas.changed = true;
@@ -172,27 +174,38 @@
 			}
 		});
 		mode_draw = gui.add(settings, "Mode", mode_list).onChange(function(newVal){
+			var current_folder; 
 			if(newVal=="Pen"){
 				pen_folder.__ul.setAttribute( "style", "display: " );
 				line_folder.__ul.setAttribute( "style", "display: none" );
 				rect_folder.__ul.setAttribute( "style", "display: none" );
 				circle_folder.__ul.setAttribute( "style", "display: none" );
+				
+				current_folder = pen_folder;
 			} else if(newVal=="Line"){
 				pen_folder.__ul.setAttribute( "style", "display: none" );
 				line_folder.__ul.setAttribute( "style", "display: " );
 				rect_folder.__ul.setAttribute( "style", "display: none" );
 				circle_folder.__ul.setAttribute( "style", "display: none" );
+				
+				current_folder = line_folder;
 			} else if(newVal=="Rectangle"){
 				pen_folder.__ul.setAttribute( "style", "display: none" );
 				line_folder.__ul.setAttribute( "style", "display: none" );
 				rect_folder.__ul.setAttribute( "style", "display: " );
 				circle_folder.__ul.setAttribute( "style", "display: none" );
+				
+				current_folder = rect_folder;
 			} else {
 				pen_folder.__ul.setAttribute( "style", "display: none" );
 				line_folder.__ul.setAttribute( "style", "display: none" );
 				rect_folder.__ul.setAttribute( "style", "display: none" );
 				circle_folder.__ul.setAttribute( "style", "display: " );
+				
+				current_folder = circle_folder;
 			}
+			
+			current_folder.open();
 		});
 		mode_draw.__li.setAttribute( "style", "display: none" );
 		
@@ -236,7 +249,7 @@
 						lines.push(child);
 					}
 				});
-				
+				rubber_folder.open();
 			} else {
 				document.removeEventListener("pointerdown", handlerPointerDown);
 				document.removeEventListener("pointerup", handlerPointerUp);
@@ -277,6 +290,25 @@
 	var erasing = false;
 	var start_pos = undefined;
 	var end_pos = undefined;
+	
+	var point_material = new THREE.LineBasicMaterial({
+		color: 0x000000
+	}); 
+	var points_1 = [];
+	points_1.push( new THREE.Vector3( -0.05, 0, 0 ) );
+	points_1.push( new THREE.Vector3( 0.05, 0, 0 ) );
+	points_1.push( new THREE.Vector3( 0, 0, 0 ) );
+	var point_geometry_1 = new THREE.BufferGeometry().setFromPoints( points_1 );
+	var points_2 = [];
+	points_2.push( new THREE.Vector3( 0, -0.05, 0 ) );
+	points_2.push( new THREE.Vector3( 0, 0.05, 0 ) );
+	var point_geometry_2 = new THREE.BufferGeometry().setFromPoints( points_2 );
+	//var utils = ;
+	var point_mesh = new THREE.Line( THREE.BufferGeometryUtils.mergeBufferGeometries([point_geometry_1, point_geometry_2]), point_material);
+	var end_point_mesh = new THREE.Line( THREE.BufferGeometryUtils.mergeBufferGeometries([point_geometry_1, point_geometry_2]), point_material);
+	var line_temp, eraser;
+	
+	
 		
 	// eventi
 	
@@ -286,11 +318,31 @@
 		if (start_pos !== undefined){
 			if(draw_mode==true){
 				drawing = true;
+				if(settings["Mode"] !== "Pen"){
+					point_mesh.name="Start";
+					point_mesh.position.set(start_pos.x, start_pos.y, start_pos.z);
+					bgScene.add(point_mesh);
+					
+					end_point_mesh.name="End";
+					point_mesh.position.set(start_pos.x, start_pos.y, start_pos.z);
+					bgScene.add(end_point_mesh);
+				}
 			} else {
-				 erasing = true;
+				erasing = true;
+				create_eraser();
 			}
 		}
 	};
+	
+	function create_eraser(){
+		var geom = new THREE.CircleGeometry(settings["Size"]/50, 60);
+		geom.vertices.shift();
+		eraser = new THREE.LineLoop(geom, point_material);
+		eraser.position.set(start_pos.x, start_pos.y, start_pos.z);
+		bgScene.add(eraser);
+		
+	}
+	
 	function getCursorPosition(canvas, event) {
 		var rect = canvas.getBoundingClientRect();
 		var x = event.clientX - rect.left;
@@ -312,6 +364,7 @@
 	// rilascio click mouse
 	var handlerPointerUp = function(event) {
 		if (drawing==true){
+			if(line_temp !== undefined){bgScene.remove(line_temp);}
 			if(settings["Mode"]=="Line"){
 				Draw();
 			} else if(settings["Mode"]=="Rectangle"){
@@ -328,12 +381,27 @@
 			} else if(settings["Mode"]=="Circle"){
 				DrawCircle();
 			}
+			var to_remove = [];
+			bgScene.children.forEach(child => {
+				if(child.name=="Start" || child.name=="End" ){
+					to_remove.push(child);
+					//bgScene.remove(child);
+				}
+			});
+			to_remove.forEach(child => {
+				bgScene.remove(child);
+			});
+		} else {
+			end_pos = start_pos;
+			Erase();
+			bgScene.remove(eraser);
 		}
 		drawing = false;
 		erasing = false;
 		start_pos = undefined;
 		end_pos = undefined;
-	};
+		
+	}
 	
 	function Draw(){
 		if(drawing==true && start_pos!==undefined && end_pos!==undefined){
@@ -352,18 +420,22 @@
 	function DrawCircle(){
 		var center = start_pos;
 		var radius = start_pos.distanceTo(end_pos);
+		//console.log(radius);
 		start_pos = new THREE.Vector3(
-				center.x+Math.cos(0) * radius,
-				center.y+Math.sin(0) * radius,
+				center.x+Math.cos(0)* radius,
+				center.y+Math.sin(0)* radius,
 				center.z);
-		var segments = 64;
-		for (var i = 1; i<=segments; i++){
+		//start_pos = end_pos;
+		var segments = 128;
+		for (var i = 0; i<=segments; i++){
 			var theta = (i / segments) * Math.PI * 2;
 			
 			end_pos = new THREE.Vector3(
-				center.x+Math.cos(theta) * radius,
-				center.y+Math.sin(theta) * radius,
+				center.x+Math.cos(theta) * radius,//*dcanvas.width/dcanvas.height,
+				center.y+Math.sin(theta) * radius, //*dcanvas.height/dcanvas.width,
 				center.z);  
+				
+			//console.log(center.distanceTo(end_pos));
 			Draw();
 			
 			
@@ -372,23 +444,69 @@
 	// movimento del puntatore
 	var handlerPointerMove = function(event){
 		end_pos = getCursorPosition(ocanvas, event);
+		if(line_temp !== undefined){bgScene.remove(line_temp);}
 		if (drawing==true){
 			if(settings["Mode"]=="Pen"){
 				Draw();
+			} else {
+				end_point_mesh.position.set(end_pos.x, end_pos.y, end_pos.z);
+				if (settings["Mode"]=="Line"){
+					line_temp = new THREE.Line( new THREE.BufferGeometry().setFromPoints([start_pos, end_pos]), point_material);
+					line_temp.name = "line_temp";
+					bgScene.add(line_temp);
+				} else if(settings["Mode"]=="Rectangle"){
+					var temp_p = [];
+					temp_p.push( start_pos );
+					temp_p.push( new THREE.Vector3( start_pos.x, end_pos.y, end_pos.z ) );
+					temp_p.push( end_pos );
+					temp_p.push( new THREE.Vector3( end_pos.x, start_pos.y, end_pos.z ) );
+					temp_p.push( start_pos );
+					line_temp = new THREE.Line( new THREE.BufferGeometry().setFromPoints(temp_p), point_material);
+					line_temp.name = "line_temp";
+					bgScene.add(line_temp);
+				} else if(settings["Mode"]=="Circle"){
+					var center = start_pos;
+					var radius = start_pos.distanceTo(end_pos);
+					//console.log(radius);
+					var s_pos = new THREE.Vector3(
+							center.x+Math.cos(0)* radius, //*dcanvas.height/dcanvas.width,
+							center.y+Math.sin(0)* radius,
+							center.z);
+					var add = s_pos.distanceTo(end_pos);
+					
+					var temp_p = [];
+					temp_p.push( s_pos );
+					var segments = 128;
+					for (var i = 0; i<=segments; i++){
+						var theta = (i / segments) * Math.PI * 2;
+						
+						var e_pos = new THREE.Vector3(
+							center.x+Math.cos(theta) * radius, //*dcanvas.height/dcanvas.width,
+							center.y+Math.sin(theta) * radius, //*dcanvas.height/dcanvas.width,
+							center.z);  
+						temp_p.push( e_pos );
+					}
+					line_temp = new THREE.Line( new THREE.BufferGeometry().setFromPoints(temp_p), point_material);
+					line_temp.name = "line_temp";
+					bgScene.add(line_temp);
+				}
 			}
 		} else if( erasing==true){
+			if(end_pos !== undefined){eraser.position.set(end_pos.x, end_pos.y, end_pos.z)}
 			Erase();
 		}
 	}
 	
 	function Erase(){
-		lines.forEach(child => {
-			if (end_pos !== undefined){
-				if (end_pos.distanceTo(child.geometry.boundingSphere.center) <= (child.geometry.boundingSphere.radius+settings["Size"]/50)){
-					bgScene.remove(child);
+		if(lines !== undefined){
+			lines.forEach(child => {
+				if (end_pos !== undefined){
+					if (end_pos.distanceTo(child.geometry.boundingSphere.center) <= (child.geometry.boundingSphere.radius+settings["Size"]/50)){
+						bgScene.remove(child);
+					}
 				}
-			}
-		});
+			});
+		}
 	}
 
 
@@ -396,7 +514,7 @@
 	</script>
 </head> 
 <body>
-	<video autoplay controls id="hiddenVideo" width="64%" class='center'></video> 
+	<video autoplay controls id="hiddenVideo" width="64%" class='center'></video> <!-- width="500" height="500" --!>
 	<canvas id="hiddenCanvas" class='center'></canvas>
 	<canvas id="drawingCanvas" sclass='center'></canvas>
 	<canvas id="outCanvas" class='center'></canvas>
